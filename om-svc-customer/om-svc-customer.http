@@ -1,0 +1,6 @@
+@om_svc_customer_HostAddress = http://localhost:5100
+
+GET {{om_svc_customer_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
