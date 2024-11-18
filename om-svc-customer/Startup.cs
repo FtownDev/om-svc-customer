@@ -1,4 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using om_svc_customer.Data;
 
 
 namespace om_svc_customer
@@ -14,7 +15,7 @@ namespace om_svc_customer
 
         public void ConfigureServices(IServiceCollection services)
         {
-            services.AddDbContext<InventoryDbContext>(opt =>
+            services.AddDbContext<CustomerDbContext>(opt =>
             {
                 var connectionString = Configuration.GetConnectionString("DefaultConnection");
                 opt.UseNpgsql(connectionString);
