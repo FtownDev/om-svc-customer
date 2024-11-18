@@ -27,7 +27,7 @@ namespace om_svc_customer.Controllers
             .ThenBy(b => b.Id)
             .Skip(currentNumber)
             .Take(pageSize)
-            .ToListAsync(); 
+            .ToListAsync();
 
             var responseData = new RetrieveCustomerResponse
             {
