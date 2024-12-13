@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using om_svc_customer.Data;
 using om_svc_customer.DTO;
 using om_svc_customer.Models;
+using om_svc_customer.Services;
 using System.Net;
 
 namespace om_svc_customer.Controllers
@@ -12,10 +13,12 @@ namespace om_svc_customer.Controllers
     public class CustomerController : ControllerBase
     {
         private readonly CustomerDbContext _context;
+        private readonly ICacheService _cacheService;
 
-        public CustomerController(CustomerDbContext context)
+        public CustomerController(CustomerDbContext context, ICacheService cache)
         {
             this._context = context;
+            this._cacheService = cache;
         }
 
         [HttpGet]
@@ -23,20 +26,32 @@ namespace om_svc_customer.Controllers
         {
             IActionResult retval;
 
-            var customerList = await this._context.Customers.OrderBy(x => x.LastName)
-            .ThenBy(b => b.Id)
-            .Skip(currentNumber)
-            .Take(pageSize)
-            .ToListAsync(); 
-
-            var responseData = new RetrieveCustomerResponse
+            var cacheList = _cacheService.GetData<IEnumerable<Customer>>(key: $"all/{pageSize}/{currentNumber}");
+            if (cacheList != null)
             {
-                pageSize = pageSize,
-                totalCount = currentNumber + pageSize,
-                customers = customerList
-            };
+                retval = this.Ok(cacheList);
+            }
+            else
+            {
+                var customerList = await this._context.Customers.OrderBy(x => x.LastName)
+                    .ThenBy(b => b.Id)
+                    .Skip(currentNumber)
+                    .Take(pageSize)
+                    .ToListAsync();
 
-            return Ok(responseData);
+                var responseData = new RetrieveCustomerResponse
+                {
+                    pageSize = pageSize,
+                    totalCount = currentNumber + pageSize,
+                    customers = customerList
+                };
+
+                _cacheService.SetData($"all/{pageSize}/{currentNumber}", responseData, 10);
+                retval = this.Ok(responseData);
+            }
+            
+
+            return retval;
         }
 
         [HttpGet]
@@ -45,15 +60,25 @@ namespace om_svc_customer.Controllers
         {
             IActionResult retval;
 
-            var customer = await this._context.Customers.Where(c => c.Id == customerId).FirstOrDefaultAsync();
+            var cacheItem = _cacheService.GetData<Customer>(key: $"{customerId}");
 
-            if (customer == null)
+            if (cacheItem != null)
             {
-                retval = BadRequest("No user exists with the provided Id");
+                retval = this.Ok(cacheItem);
             }
             else
             {
-                retval = Ok(customer);
+                var customer = await this._context.Customers.Where(c => c.Id == customerId).FirstOrDefaultAsync();
+
+                if (customer == null)
+                {
+                    retval = BadRequest("No user exists with the provided Id");
+                }
+                else
+                {
+                    _cacheService.SetData($"{customerId}", customer, 10);
+                    retval = Ok(customer);
+                }
             }
 
             return retval;
@@ -101,6 +126,7 @@ namespace om_svc_customer.Controllers
             }
             else
             {
+                _cacheService.InvalidateKeys(new List<string>() { "all" });
                 retval = Ok(newCustomer);
             }
 
@@ -124,6 +150,7 @@ namespace om_svc_customer.Controllers
                 this._context.Customers.Remove(customer);
 
                 retval = await this._context.SaveChangesAsync() > 0 ? this.Ok() : this.StatusCode((int)HttpStatusCode.InternalServerError, "Unable to delete customer");
+                _cacheService.InvalidateKeys(new List<string>() { "all", $"{customerId}" });
             }
 
             return retval;
@@ -135,30 +162,39 @@ namespace om_svc_customer.Controllers
         {
             IActionResult retval;
 
-            var addressIdList = await this._context.CustomerShippingAddresses.Where(c => c.CustomerId == customerId)
-                .Select(x => x.AddressId)
-                .ToListAsync();
-
-            if (addressIdList.Count == 0)
+            var cacheList = _cacheService.GetData<IEnumerable<Address>>(key: $"{customerId}/address");
+            if (cacheList != null)
             {
-                retval = BadRequest("No addresses exist for the given customer");
+                retval = this.Ok(cacheList);
             }
             else
             {
-                var addressList = await this._context.Addresses.Where(a => addressIdList.Contains(a.Id)).ToListAsync();
+                var addressIdList = await this._context.CustomerShippingAddresses.Where(c => c.CustomerId == customerId)
+                   .Select(x => x.AddressId)
+                   .ToListAsync();
 
-                if (!addressIdList.Any() || addressIdList.Count == 0)
+                if (addressIdList.Count == 0)
                 {
-                    retval = BadRequest("No user exists with the provided Id");
+                    retval = BadRequest("No addresses exist for the given customer");
                 }
                 else
                 {
+                    var addressList = await this._context.Addresses.Where(a => addressIdList.Contains(a.Id)).ToListAsync();
 
-                    retval = Ok(new RetrieveShippingAddressResponse
+                    if (!addressIdList.Any() || addressIdList.Count == 0)
                     {
-                        customerId = customerId,
-                        shippingAddresses = addressList
-                    });
+                        retval = BadRequest("No user exists with the provided Id");
+                    }
+                    else
+                    {
+                        var retObj = new RetrieveShippingAddressResponse
+                        {
+                            customerId = customerId,
+                            shippingAddresses = addressList
+                        };
+                        this._cacheService.SetData($"{customerId}/address", retObj, 10);
+                        retval = Ok(retObj);
+                    }
                 }
             }
 
@@ -185,6 +221,7 @@ namespace om_svc_customer.Controllers
             }
             else
             {
+                this._cacheService.InvalidateKeys(new List<string>{ $"{customerId}/address" });
                 retval = Ok(shippingAddress);
             }
 
@@ -216,7 +253,15 @@ namespace om_svc_customer.Controllers
             else
             {
                 this._context.Addresses.Remove(address);
-                retval = await this._context.SaveChangesAsync() > 0 ? this.Ok() : this.StatusCode((int)HttpStatusCode.InternalServerError, "Unable to delete address");
+                if(await this._context.SaveChangesAsync() > 0)
+                {
+                    this._cacheService.InvalidateKeys(new List<string> { $"{customerId}/address" });
+                    retval = Ok(customerId);
+                }
+                else
+                {
+                    retval = this.StatusCode((int)HttpStatusCode.InternalServerError, "Unable to delete address");
+                }
             }
 
             return retval;
@@ -228,11 +273,28 @@ namespace om_svc_customer.Controllers
         {
             IActionResult retval;
 
-            var customerList = await this._context.Countries.OrderBy(x => x.Name)
-            .ToListAsync();
+            var cacheList = _cacheService.GetData<IEnumerable<Country>>(key: $"address/countries");
 
+            if (cacheList != null)
+            {
+                retval = this.Ok(cacheList);
+            }
+            else
+            {
+                var countryList = await this._context.Countries.OrderBy(x => x.Name).ToListAsync();
+                if(countryList == null || countryList.Count == 0)
+                {
+                    retval = this.NotFound("No countries available");
+                }
+                else
+                {
+                    this._cacheService.SetData($"address/countries", countryList, 10);
+                    retval = Ok(countryList);
+                }
 
-            return Ok(customerList);
+            }
+
+            return retval;
         }
 
     }
