@@ -26,7 +26,7 @@ namespace om_svc_customer.Controllers
         {
             IActionResult retval;
 
-            var cacheList = _cacheService.GetData<IEnumerable<Customer>>(key: $"all/{pageSize}/{currentNumber}");
+            var cacheList = _cacheService.GetData<IEnumerable<RetrieveCustomerResponse>>(key: $"all/{pageSize}/{currentNumber}");
             if (cacheList != null)
             {
                 retval = this.Ok(cacheList);
@@ -162,7 +162,7 @@ namespace om_svc_customer.Controllers
         {
             IActionResult retval;
 
-            var cacheList = _cacheService.GetData<IEnumerable<Address>>(key: $"{customerId}/address");
+            var cacheList = _cacheService.GetData<IEnumerable<RetrieveShippingAddressResponse>>(key: $"{customerId}/address");
             if (cacheList != null)
             {
                 retval = this.Ok(cacheList);
