@@ -1,4 +1,7 @@
 ﻿using Microsoft.Extensions.Caching.Distributed;
+using Microsoft.Extensions.Caching.StackExchangeRedis;
+using StackExchange.Redis;
+using System.Reflection;
 using System.Text.Json;
 
 namespace om_svc_customer.Services
@@ -6,10 +9,17 @@ namespace om_svc_customer.Services
     public class RedisCacheService : ICacheService
     {
         private readonly IDistributedCache _cache;
+        private readonly IDatabase _database;
+        private readonly string cachePrefix = "Customers_";
 
-        public RedisCacheService(IDistributedCache cache)
+        public RedisCacheService(IDistributedCache cache, IConnectionMultiplexer connectionMultiplexer)
         {
             _cache = cache;
+            _database = connectionMultiplexer.GetDatabase();    
+            if(_database == null)
+            {
+                throw new ArgumentNullException("Unable to get Redis Database instance.");
+            }
         }
 
         public T? GetData<T>(string key)
@@ -40,11 +50,27 @@ namespace om_svc_customer.Services
             _cache.SetString(key, JsonSerializer.Serialize(data), options);
         }
 
-        public void InvalidateKeys(List<string> keysToDelete)
+        public async Task InvalidateKeys(List<string> keysToDelete)
         {
             foreach (var key in keysToDelete)
             {
-                _cache.Remove(key);
+                await InvalidateByPattern(key);
+            }
+        }
+
+        private async Task InvalidateByPattern(string pattern)
+        {
+            if (string.IsNullOrEmpty(pattern))
+                throw new ArgumentException("Pattern cannot be null or empty", nameof(pattern));
+
+            string searchPattern = pattern.EndsWith("*") ? cachePrefix + pattern :  cachePrefix + pattern + "*";
+            var server = _database.Multiplexer.GetServer(_database.Multiplexer.GetEndPoints().First());
+
+            // Get and delete all matching keys
+            var keys = server.Keys(pattern: searchPattern).ToArray();
+            if (keys.Any())
+            {
+                await _database.KeyDeleteAsync(keys);
             }
         }
     }

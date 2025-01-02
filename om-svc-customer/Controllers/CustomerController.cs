@@ -126,7 +126,7 @@ namespace om_svc_customer.Controllers
             }
             else
             {
-                _cacheService.InvalidateKeys(new List<string>() { "all" });
+                await _cacheService.InvalidateKeys(new List<string>() { "all" });
                 retval = Ok(newCustomer);
             }
 
@@ -147,13 +147,64 @@ namespace om_svc_customer.Controllers
             }
             else
             {
+                var shippingAddressesToDelete = this._context.CustomerShippingAddresses.Where(a => a.CustomerId == customerId);
+
+                var addressIds = shippingAddressesToDelete.Select(a => a.AddressId);
+
+                if (shippingAddressesToDelete.Any()) 
+                {
+                    _context.CustomerShippingAddresses.RemoveRange(shippingAddressesToDelete);
+                }
+
+                var addressesToDelete = this._context.Addresses.Where(a => addressIds.Contains(a.Id));
+
+                this._context.Addresses.RemoveRange(addressesToDelete);
+
                 this._context.Customers.Remove(customer);
 
                 retval = await this._context.SaveChangesAsync() > 0 ? this.Ok() : this.StatusCode((int)HttpStatusCode.InternalServerError, "Unable to delete customer");
-                _cacheService.InvalidateKeys(new List<string>() { "all", $"{customerId}" });
+                await _cacheService.InvalidateKeys(new List<string>() { "all", $"{customerId}" });
             }
 
             return retval;
+        }
+
+        [HttpPost("search")]
+        public async Task<IActionResult> SearchCustomers([FromBody] CustomerSearchRequest request, [FromQuery] int pageSize = 50,[FromQuery] int currentPage = 1)
+        {
+            var query = _context.Customers.AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(request.FirstName))
+            {
+                query = query.Where(c => c.FirstName.Contains(request.FirstName));
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.LastName))
+            {
+                query = query.Where(c => c.LastName.Contains(request.LastName));
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.Email))
+            {
+                query = query.Where(c => c.Email.Contains(request.Email));
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.Phone))
+            {
+                query = query.Where(c => c.PrimaryPhone.Contains(request.Phone)
+                    || (c.SecondaryPhone != null && c.SecondaryPhone.Contains(request.Phone)));
+            }
+
+            //  pagination
+            var totalCount = await query.CountAsync();
+            var totalPages = (int)Math.Ceiling(totalCount / (double)pageSize);
+
+            var customers = await query
+                .Skip((currentPage - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+
+            return Ok(customers);
         }
 
         [HttpGet]
@@ -221,7 +272,7 @@ namespace om_svc_customer.Controllers
             }
             else
             {
-                this._cacheService.InvalidateKeys(new List<string>{ $"{customerId}/address" });
+                await this._cacheService.InvalidateKeys(new List<string> { $"{customerId}/address" });
                 retval = Ok(shippingAddress);
             }
 
@@ -255,7 +306,7 @@ namespace om_svc_customer.Controllers
                 this._context.Addresses.Remove(address);
                 if(await this._context.SaveChangesAsync() > 0)
                 {
-                    this._cacheService.InvalidateKeys(new List<string> { $"{customerId}/address" });
+                    await this._cacheService.InvalidateKeys(new List<string> { $"{customerId}/address" });
                     retval = Ok(customerId);
                 }
                 else

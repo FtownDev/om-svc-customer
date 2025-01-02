@@ -1,6 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using om_svc_customer.Data;
 using om_svc_customer.Services;
+using StackExchange.Redis;
 
 
 namespace om_svc_customer
@@ -25,11 +26,21 @@ namespace om_svc_customer
             services.AddEndpointsApiExplorer();
             services.AddSwaggerGen();
 
+            var redisConnection = Configuration.GetConnectionString("RedisCache");
+            if(redisConnection == null) 
+            {
+                throw new NullReferenceException("Cannot find Redis Connection string ");
+            }
+
             services.AddStackExchangeRedisCache(options =>
             {
-                options.Configuration = Configuration.GetConnectionString("RedisCache");
+                options.Configuration = redisConnection;
                 options.InstanceName = "Customers_";
             });
+
+            var redisConfiguration = ConfigurationOptions.Parse(redisConnection); 
+            
+            services.AddSingleton<IConnectionMultiplexer>(sp => ConnectionMultiplexer.Connect(redisConfiguration));
 
             services.AddScoped<ICacheService, RedisCacheService>();
         }
