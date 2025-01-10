@@ -6,7 +6,7 @@
 
         void SetData<T>(string key, T data, int timeoutLength = 1);
 
-        void InvalidateKeys(List<string> keysToDelete);
+        Task InvalidateKeys(List<string> keysToDelete);
     }
 
 }
