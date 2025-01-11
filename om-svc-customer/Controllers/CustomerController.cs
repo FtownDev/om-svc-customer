@@ -176,23 +176,23 @@ namespace om_svc_customer.Controllers
 
             if (!string.IsNullOrWhiteSpace(request.FirstName))
             {
-                query = query.Where(c => c.FirstName.Contains(request.FirstName));
+                query = query.Where(c => c.FirstName.ToLower().Contains(request.FirstName));
             }
 
             if (!string.IsNullOrWhiteSpace(request.LastName))
             {
-                query = query.Where(c => c.LastName.Contains(request.LastName));
+                query = query.Where(c => c.LastName.ToLower().Contains(request.LastName));
             }
 
             if (!string.IsNullOrWhiteSpace(request.Email))
             {
-                query = query.Where(c => c.Email.Contains(request.Email));
+                query = query.Where(c => c.Email.ToLower().Contains(request.Email));
             }
 
             if (!string.IsNullOrWhiteSpace(request.Phone))
             {
-                query = query.Where(c => c.PrimaryPhone.Contains(request.Phone)
-                    || (c.SecondaryPhone != null && c.SecondaryPhone.Contains(request.Phone)));
+                query = query.Where(c => c.PrimaryPhone.ToLower().Contains(request.Phone)
+                    || (c.SecondaryPhone != null && c.SecondaryPhone.ToLower().Contains(request.Phone)));
             }
 
             //  pagination
